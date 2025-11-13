@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Sparkles, LogOut } from 'lucide-react';
+import { Loader2, Sparkles, LogOut, Shield } from 'lucide-react';
 import KeysInventory from '@/components/KeysInventory';
 import MissionsList from '@/components/MissionsList';
 import GuardianChatbot from '@/components/GuardianChatbot';
@@ -15,6 +15,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [keysCollected, setKeysCollected] = useState<string[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -26,6 +27,11 @@ const Dashboard = () => {
       }
 
       setUser(session.user);
+      
+      // Check if admin
+      const adminEmails = ['admin@gardiens.paris', 'organisateur@gardiens.paris'];
+      setIsAdmin(adminEmails.includes(session.user.email || ''));
+      
       await loadKeys(session.user.id);
       setLoading(false);
     };
@@ -80,14 +86,26 @@ const Dashboard = () => {
             <Sparkles className="w-8 h-8 text-primary drop-shadow-[0_0_10px_hsl(43,96%,56%)]" />
             <h1 className="text-2xl font-bold text-primary">Tableau de Gardien</h1>
           </div>
-          <Button
-            onClick={handleSignOut}
-            variant="outline"
-            className="border-primary/50 text-primary hover:bg-primary/10"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            Déconnexion
-          </Button>
+          <div className="flex gap-2">
+            {isAdmin && (
+              <Button
+                onClick={() => navigate('/admin')}
+                variant="outline"
+                className="border-primary/50 text-primary hover:bg-primary/10"
+              >
+                <Shield className="w-4 h-4 mr-2" />
+                Admin
+              </Button>
+            )}
+            <Button
+              onClick={handleSignOut}
+              variant="outline"
+              className="border-primary/50 text-primary hover:bg-primary/10"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Déconnexion
+            </Button>
+          </div>
         </div>
       </header>
 

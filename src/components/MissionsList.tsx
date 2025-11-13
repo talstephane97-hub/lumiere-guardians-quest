@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, CheckCircle2, Lock } from 'lucide-react';
+import { MapPin, CheckCircle2, Camera, Upload, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface MissionsListProps {
@@ -71,6 +71,9 @@ const MISSIONS = [
 const MissionsList = ({ userId, onKeyCollected }: MissionsListProps) => {
   const { toast } = useToast();
   const [completedMissions, setCompletedMissions] = useState<string[]>([]);
+  const [uploadingMission, setUploadingMission] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<Record<string, File>>({});
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
     loadProgress();
@@ -85,6 +88,78 @@ const MissionsList = ({ userId, onKeyCollected }: MissionsListProps) => {
 
     if (data) {
       setCompletedMissions(data.map((m) => m.mission_id));
+    }
+  };
+
+  const handleFileSelect = (missionId: string, file: File | null) => {
+    if (file) {
+      setSelectedFiles(prev => ({ ...prev, [missionId]: file }));
+    } else {
+      setSelectedFiles(prev => {
+        const { [missionId]: _, ...rest } = prev;
+        return rest;
+      });
+    }
+  };
+
+  const handleUploadPhoto = async (missionId: string, keyReward: string | null) => {
+    const file = selectedFiles[missionId];
+    if (!file) {
+      toast({
+        title: "Photo requise",
+        description: "Veuillez sélectionner une photo avant de soumettre.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploadingMission(missionId);
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${userId}/${missionId}-${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('mission-proofs')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('mission-proofs')
+        .getPublicUrl(fileName);
+
+      const { error: submissionError } = await supabase
+        .from('submissions')
+        .insert({
+          mission_id: missionId,
+          user_id: userId,
+          type: 'photo',
+          photo_url: publicUrl,
+          status: 'pending'
+        });
+
+      if (submissionError) throw submissionError;
+
+      toast({
+        title: "Photo envoyée !",
+        description: "Ta preuve est en cours de validation par les Gardiens.",
+      });
+
+      handleFileSelect(missionId, null);
+
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      toast({
+        title: "Erreur d'envoi",
+        description: error.message || "Impossible d'envoyer la photo.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingMission(null);
     }
   };
 
@@ -181,12 +256,76 @@ const MissionsList = ({ userId, onKeyCollected }: MissionsListProps) => {
                   )}
 
                   {!completed && (
-                    <Button
-                      onClick={() => handleCompleteMission(mission.id, mission.keyReward)}
-                      className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-                    >
-                      Valider la mission
-                    </Button>
+                    <div className="space-y-3">
+                      <div className="border-2 border-dashed border-primary/20 rounded-lg p-4">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          ref={(el) => { fileInputRefs.current[mission.id] = el; }}
+                          onChange={(e) => handleFileSelect(mission.id, e.target.files?.[0] || null)}
+                          className="hidden"
+                        />
+                        
+                        {selectedFiles[mission.id] ? (
+                          <div className="space-y-2">
+                            <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
+                              <img 
+                                src={URL.createObjectURL(selectedFiles[mission.id])} 
+                                alt="Preview" 
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => fileInputRefs.current[mission.id]?.click()}
+                                className="flex-1"
+                              >
+                                <Camera className="w-4 h-4 mr-2" />
+                                Changer
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleFileSelect(mission.id, null)}
+                                className="flex-1"
+                              >
+                                Annuler
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            onClick={() => fileInputRefs.current[mission.id]?.click()}
+                            className="w-full h-32 flex flex-col gap-2 border-0"
+                          >
+                            <Camera className="w-8 h-8 text-primary" />
+                            <span className="text-sm">Ajouter une preuve photo</span>
+                          </Button>
+                        )}
+                      </div>
+
+                      <Button 
+                        onClick={() => handleUploadPhoto(mission.id, mission.keyReward)}
+                        disabled={!selectedFiles[mission.id] || uploadingMission === mission.id}
+                        className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+                      >
+                        {uploadingMission === mission.id ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Envoi en cours...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-4 h-4 mr-2" />
+                            Envoyer la preuve
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   )}
                 </Card>
               );
