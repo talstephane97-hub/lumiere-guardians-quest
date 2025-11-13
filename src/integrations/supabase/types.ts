@@ -59,6 +59,45 @@ export type Database = {
         }
         Relationships: []
       }
+      mission_configs: {
+        Row: {
+          code_verb: string | null
+          code_verb_lang: string | null
+          day: number
+          location_lat: number | null
+          location_lng: number | null
+          mission_id: string
+          order_index: number
+          radius_meters: number | null
+          requires_photo: boolean | null
+          title: string
+        }
+        Insert: {
+          code_verb?: string | null
+          code_verb_lang?: string | null
+          day: number
+          location_lat?: number | null
+          location_lng?: number | null
+          mission_id: string
+          order_index: number
+          radius_meters?: number | null
+          requires_photo?: boolean | null
+          title: string
+        }
+        Update: {
+          code_verb?: string | null
+          code_verb_lang?: string | null
+          day?: number
+          location_lat?: number | null
+          location_lng?: number | null
+          mission_id?: string
+          order_index?: number
+          radius_meters?: number | null
+          requires_photo?: boolean | null
+          title?: string
+        }
+        Relationships: []
+      }
       missions_progress: {
         Row: {
           completed: boolean | null
@@ -145,6 +184,60 @@ export type Database = {
           id?: string
           location?: string | null
           photo_url?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      submissions: {
+        Row: {
+          code_verb_entered: string | null
+          created_at: string
+          id: string
+          latitude: number | null
+          longitude: number | null
+          mission_id: string
+          notes: string | null
+          photo_url: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          team_id: string | null
+          type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          code_verb_entered?: string | null
+          created_at?: string
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          mission_id: string
+          notes?: string | null
+          photo_url?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          team_id?: string | null
+          type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          code_verb_entered?: string | null
+          created_at?: string
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          mission_id?: string
+          notes?: string | null
+          photo_url?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          team_id?: string | null
+          type?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
