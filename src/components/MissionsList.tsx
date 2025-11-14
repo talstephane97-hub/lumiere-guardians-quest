@@ -3,8 +3,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, CheckCircle2, Camera, Upload, Loader2 } from 'lucide-react';
+import { MapPin, CheckCircle2, Camera, Upload, Loader2, Navigation } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import MissionMap from './MissionMap';
+import MapboxConfig from './MapboxConfig';
 
 interface MissionsListProps {
   userId: string;
@@ -73,11 +75,28 @@ const MissionsList = ({ userId, onKeyCollected }: MissionsListProps) => {
   const [completedMissions, setCompletedMissions] = useState<string[]>([]);
   const [uploadingMission, setUploadingMission] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<Record<string, File>>({});
+  const [missionConfigs, setMissionConfigs] = useState<any[]>([]);
+  const [mapboxToken, setMapboxToken] = useState<string>('');
+  const [locationStatus, setLocationStatus] = useState<Record<string, {valid: boolean; distance: number}>>({});
+  const [selectedMission, setSelectedMission] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
     loadProgress();
+    loadMissionConfigs();
   }, [userId]);
+
+  const loadMissionConfigs = async () => {
+    const { data } = await supabase
+      .from('mission_configs')
+      .select('*')
+      .order('day', { ascending: true })
+      .order('order_index', { ascending: true });
+    
+    if (data) {
+      setMissionConfigs(data);
+    }
+  };
 
   const loadProgress = async () => {
     const { data } = await supabase
@@ -108,6 +127,19 @@ const MissionsList = ({ userId, onKeyCollected }: MissionsListProps) => {
       toast({
         title: "Photo requise",
         description: "Veuillez sélectionner une photo avant de soumettre.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check location if required
+    const missionConfig = missionConfigs.find(m => m.mission_id === missionId);
+    const locationValid = locationStatus[missionId]?.valid ?? false;
+    
+    if (missionConfig?.target_lat && missionConfig?.target_lng && !locationValid) {
+      toast({
+        title: "Position invalide",
+        description: `Vous devez être à moins de ${missionConfig.radius_meters}m de la cible pour valider cette mission.`,
         variant: "destructive",
       });
       return;
@@ -212,6 +244,8 @@ const MissionsList = ({ userId, onKeyCollected }: MissionsListProps) => {
     <div className="space-y-6">
       <h2 className="text-3xl font-bold text-primary mb-4">Missions</h2>
 
+      {!mapboxToken && <MapboxConfig onTokenSet={setMapboxToken} />}
+
       {[1, 2, 3].map((day) => (
         <div key={day}>
           <div className="flex items-center gap-3 mb-4">
@@ -223,6 +257,10 @@ const MissionsList = ({ userId, onKeyCollected }: MissionsListProps) => {
           <div className="space-y-4">
             {MISSIONS.filter((m) => m.day === day).map((mission) => {
               const completed = completedMissions.includes(mission.id);
+              const missionConfig = missionConfigs.find(m => m.mission_id === mission.id);
+              const hasLocation = missionConfig?.target_lat && missionConfig?.target_lng;
+              const locationData = locationStatus[mission.id];
+              const isLocationValid = locationData?.valid ?? false;
 
               return (
                 <Card
@@ -253,6 +291,50 @@ const MissionsList = ({ userId, onKeyCollected }: MissionsListProps) => {
                     <Badge className="mb-4 bg-primary/20 text-primary border-primary/30">
                       Récompense : Clé de {mission.keyReward}
                     </Badge>
+                  )}
+
+                  {/* Map for missions with GPS validation */}
+                  {!completed && hasLocation && mapboxToken && selectedMission === mission.id && (
+                    <div className="mb-4">
+                      <MissionMap
+                        mapboxToken={mapboxToken}
+                        userId={userId}
+                        targetLat={missionConfig.target_lat}
+                        targetLng={missionConfig.target_lng}
+                        radiusMeters={missionConfig.radius_meters || 100}
+                        onLocationValid={(isValid, distance) => {
+                          setLocationStatus(prev => ({
+                            ...prev,
+                            [mission.id]: { valid: isValid, distance }
+                          }));
+                        }}
+                      />
+                      {locationData && (
+                        <div className={`mt-2 p-3 rounded-lg text-sm ${
+                          isLocationValid 
+                            ? 'bg-secondary/20 text-secondary' 
+                            : 'bg-destructive/20 text-destructive'
+                        }`}>
+                          {isLocationValid ? (
+                            <span>✓ Vous êtes dans la zone ({Math.round(locationData.distance)}m de la cible)</span>
+                          ) : (
+                            <span>✗ Vous êtes à {Math.round(locationData.distance)}m de la cible</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {!completed && hasLocation && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedMission(selectedMission === mission.id ? null : mission.id)}
+                      className="mb-3 w-full border-accent/50 text-accent hover:bg-accent/10"
+                    >
+                      <Navigation className="w-4 h-4 mr-2" />
+                      {selectedMission === mission.id ? 'Masquer la carte' : 'Afficher la carte'}
+                    </Button>
                   )}
 
                   {!completed && (
