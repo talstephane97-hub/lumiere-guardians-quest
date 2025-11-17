@@ -23,11 +23,15 @@ const Admin = () => {
 
       setUser(session.user);
 
-      // Check if user is admin (simple email check for now)
-      const adminEmails = ['admin@gardiens.paris', 'organisateur@gardiens.paris'];
-      const userIsAdmin = adminEmails.includes(session.user.email || '');
-      
-      if (!userIsAdmin) {
+      // Check if user has admin role
+      const { data: roleData, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', session.user.id)
+        .eq('role', 'admin')
+        .single();
+
+      if (error || !roleData) {
         navigate('/dashboard');
         return;
       }
