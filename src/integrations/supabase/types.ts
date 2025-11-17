@@ -61,6 +61,7 @@ export type Database = {
       }
       mission_configs: {
         Row: {
+          ai_validation_prompt: string | null
           code_verb: string | null
           code_verb_lang: string | null
           day: number
@@ -70,9 +71,13 @@ export type Database = {
           order_index: number
           radius_meters: number | null
           requires_photo: boolean | null
+          target_lat: number | null
+          target_lng: number | null
           title: string
+          validation_type: string | null
         }
         Insert: {
+          ai_validation_prompt?: string | null
           code_verb?: string | null
           code_verb_lang?: string | null
           day: number
@@ -82,9 +87,13 @@ export type Database = {
           order_index: number
           radius_meters?: number | null
           requires_photo?: boolean | null
+          target_lat?: number | null
+          target_lng?: number | null
           title: string
+          validation_type?: string | null
         }
         Update: {
+          ai_validation_prompt?: string | null
           code_verb?: string | null
           code_verb_lang?: string | null
           day?: number
@@ -94,7 +103,10 @@ export type Database = {
           order_index?: number
           radius_meters?: number | null
           requires_photo?: boolean | null
+          target_lat?: number | null
+          target_lng?: number | null
           title?: string
+          validation_type?: string | null
         }
         Relationships: []
       }
@@ -128,6 +140,36 @@ export type Database = {
           proof_url?: string | null
           user_id?: string
           validated_at?: string | null
+        }
+        Relationships: []
+      }
+      player_positions: {
+        Row: {
+          accuracy: number | null
+          created_at: string
+          id: string
+          latitude: number
+          longitude: number
+          mission_context: string | null
+          user_id: string
+        }
+        Insert: {
+          accuracy?: number | null
+          created_at?: string
+          id?: string
+          latitude: number
+          longitude: number
+          mission_context?: string | null
+          user_id: string
+        }
+        Update: {
+          accuracy?: number | null
+          created_at?: string
+          id?: string
+          latitude?: number
+          longitude?: number
+          mission_context?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -190,10 +232,13 @@ export type Database = {
       }
       submissions: {
         Row: {
+          ai_validation_result: string | null
           code_verb_entered: string | null
           created_at: string
+          distance_from_target: number | null
           id: string
           latitude: number | null
+          location_valid: boolean | null
           longitude: number | null
           mission_id: string
           notes: string | null
@@ -207,10 +252,13 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ai_validation_result?: string | null
           code_verb_entered?: string | null
           created_at?: string
+          distance_from_target?: number | null
           id?: string
           latitude?: number | null
+          location_valid?: boolean | null
           longitude?: number | null
           mission_id: string
           notes?: string | null
@@ -224,10 +272,13 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ai_validation_result?: string | null
           code_verb_entered?: string | null
           created_at?: string
+          distance_from_target?: number | null
           id?: string
           latitude?: number | null
+          location_valid?: boolean | null
           longitude?: number | null
           mission_id?: string
           notes?: string | null
