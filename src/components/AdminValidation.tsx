@@ -1,278 +1,77 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/hooks/use-toast';
-import { Check, X, Loader2, ExternalLink } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/hooks/use-toast';
+import { CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
 
 interface Submission {
   id: string;
-  mission_id: string;
   user_id: string;
+  mission_id: string;
   photo_url: string | null;
-  status: 'pending' | 'approved' | 'rejected';
+  status: string;
   created_at: string;
-  profiles: {
+  profiles?: {
     email: string;
     team_name: string | null;
   };
 }
 
 const AdminValidation = () => {
-  const { toast } = useToast();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     loadSubmissions();
-
-    // Subscribe to changes
-    const channel = supabase
-      .channel('submissions-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'submissions',
-        },
-        () => {
-          loadSubmissions();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const channel = supabase.channel('submissions-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'submissions' }, () => loadSubmissions()).subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const loadSubmissions = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('submissions')
-      .select(`
-        id,
-        mission_id,
-        user_id,
-        photo_url,
-        status,
-        created_at,
-        profiles!inner (
-          email,
-          team_name
-        )
-      `)
-      .order('created_at', { ascending: false });
-
+    const { data, error } = await supabase.from('submissions').select('*').order('created_at', { ascending: false });
     if (!error && data) {
-      setSubmissions(data as unknown as Submission[]);
+      // Fetch profiles separately
+      const userIds = [...new Set(data.map(s => s.user_id))];
+      const { data: profiles } = await supabase.from('profiles').select('id, email, team_name').in('id', userIds);
+      const profileMap = new Map(profiles?.map(p => [p.id, p]));
+      setSubmissions(data.map(s => ({ ...s, profiles: profileMap.get(s.user_id) })) as Submission[]);
     }
     setLoading(false);
   };
 
-  const handleValidation = async (submissionId: string, newStatus: 'approved' | 'rejected') => {
+  const handleValidation = async (submissionId: string, approved: boolean) => {
     setProcessingId(submissionId);
-    
     try {
-      const { error } = await supabase
-        .from('submissions')
-        .update({
-          status: newStatus,
-          reviewed_at: new Date().toISOString(),
-        })
-        .eq('id', submissionId);
-
-      if (error) throw error;
-
-      // If approved, complete the mission
-      if (newStatus === 'approved') {
-        const submission = submissions.find(s => s.id === submissionId);
-        if (submission) {
-          const { error: progressError } = await supabase
-            .from('missions_progress')
-            .insert({
-              user_id: submission.user_id,
-              mission_id: submission.mission_id,
-              day: 1,
-              completed: true,
-              validated_at: new Date().toISOString(),
-            });
-
-          if (progressError) {
-            console.error('Progress error:', progressError);
-          }
-        }
+      const submission = submissions.find(s => s.id === submissionId);
+      await supabase.from('submissions').update({ status: approved ? 'approved' : 'rejected', reviewed_at: new Date().toISOString() }).eq('id', submissionId);
+      if (approved && submission) {
+        await supabase.from('missions_progress').insert({ user_id: submission.user_id, mission_id: submission.mission_id, day: 1, completed: true, validated_at: new Date().toISOString(), proof_url: submission.photo_url });
       }
-
-      toast({
-        title: newStatus === 'approved' ? "Preuve validée ✓" : "Preuve refusée",
-        description: newStatus === 'approved' 
-          ? "Le Gardien peut continuer son parcours." 
-          : "Le Gardien devra soumettre une nouvelle preuve.",
-      });
-
+      toast({ title: approved ? "Approuvée" : "Rejetée" });
+      await loadSubmissions();
     } catch (error: any) {
-      toast({
-        title: "Erreur",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setProcessingId(null);
+      toast({ title: "Erreur", description: error.message, variant: "destructive" });
     }
+    setProcessingId(null);
   };
 
-  const renderSubmissions = (status: 'pending' | 'approved' | 'rejected') => {
+  const renderSubmissions = (status: string) => {
     const filtered = submissions.filter(s => s.status === status);
-
-    if (filtered.length === 0) {
-      return (
-        <div className="text-center py-12 text-muted-foreground">
-          {status === 'pending' ? 'Aucune soumission en attente' : `Aucune soumission ${status === 'approved' ? 'validée' : 'refusée'}`}
-        </div>
-      );
-    }
-
-    return (
-      <div className="grid gap-4">
-        {filtered.map((submission) => (
-          <Card key={submission.id} className="p-4 bg-card border-primary/20">
-            <div className="flex flex-col md:flex-row gap-4">
-              {/* Photo */}
-              {submission.photo_url && (
-                <div className="w-full md:w-48 aspect-video rounded-lg overflow-hidden bg-muted">
-                  <img 
-                    src={submission.photo_url} 
-                    alt="Preuve mission"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              )}
-
-              {/* Info */}
-              <div className="flex-1 space-y-2">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="font-semibold text-primary">{submission.mission_id}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {submission.profiles.team_name || submission.profiles.email}
-                    </p>
-                  </div>
-                  <Badge variant={
-                    submission.status === 'approved' ? 'default' : 
-                    submission.status === 'rejected' ? 'destructive' : 
-                    'outline'
-                  }>
-                    {submission.status === 'pending' ? 'En attente' : 
-                     submission.status === 'approved' ? 'Validé' : 'Refusé'}
-                  </Badge>
-                </div>
-
-                <p className="text-xs text-muted-foreground">
-                  Soumis le {new Date(submission.created_at).toLocaleString('fr-FR')}
-                </p>
-
-                {submission.photo_url && (
-                  <a 
-                    href={submission.photo_url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center text-xs text-primary hover:underline"
-                  >
-                    Voir en plein écran <ExternalLink className="w-3 h-3 ml-1" />
-                  </a>
-                )}
-
-                {/* Actions (only for pending) */}
-                {submission.status === 'pending' && (
-                  <div className="flex gap-2 pt-2">
-                    <Button
-                      size="sm"
-                      onClick={() => handleValidation(submission.id, 'approved')}
-                      disabled={processingId === submission.id}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      {processingId === submission.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <>
-                          <Check className="w-4 h-4 mr-1" />
-                          Valider
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => handleValidation(submission.id, 'rejected')}
-                      disabled={processingId === submission.id}
-                    >
-                      {processingId === submission.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <>
-                          <X className="w-4 h-4 mr-1" />
-                          Refuser
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
-    );
+    if (filtered.length === 0) return <div className="text-center py-12 text-muted-foreground"><Clock className="w-12 h-12 mx-auto mb-4 opacity-50" /><p>Aucune soumission</p></div>;
+    return <div className="grid gap-4">{filtered.map((s) => (
+      <Card key={s.id} className="p-4"><div className="flex gap-4">{s.photo_url && <img src={s.photo_url} alt="Preuve" className="w-32 h-32 object-cover rounded-lg" />}<div className="flex-1"><h4 className="font-bold">{s.mission_id}</h4><p className="text-sm text-muted-foreground">{s.profiles?.team_name} - {s.profiles?.email}</p><p className="text-xs text-muted-foreground">{new Date(s.created_at).toLocaleString('fr-FR')}</p>{status === 'pending' && <div className="flex gap-2 mt-3"><Button onClick={() => handleValidation(s.id, true)} disabled={processingId === s.id} size="sm" className="bg-green-600"><CheckCircle className="w-4 h-4 mr-2" />Approuver</Button><Button onClick={() => handleValidation(s.id, false)} disabled={processingId === s.id} size="sm" variant="destructive"><XCircle className="w-4 h-4 mr-2" />Rejeter</Button></div>}</div></div></Card>
+    ))}</div>;
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-12 h-12 text-primary animate-spin" />
-      </div>
-    );
-  }
+  if (loading) return <div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-primary mb-2">Validation des preuves</h2>
-        <p className="text-muted-foreground">
-          Validez les photos soumises par les Gardiens
-        </p>
-      </div>
-
-      <Tabs defaultValue="pending" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="pending">
-            En attente ({submissions.filter(s => s.status === 'pending').length})
-          </TabsTrigger>
-          <TabsTrigger value="approved">
-            Validées ({submissions.filter(s => s.status === 'approved').length})
-          </TabsTrigger>
-          <TabsTrigger value="rejected">
-            Refusées ({submissions.filter(s => s.status === 'rejected').length})
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="pending" className="mt-6">
-          {renderSubmissions('pending')}
-        </TabsContent>
-
-        <TabsContent value="approved" className="mt-6">
-          {renderSubmissions('approved')}
-        </TabsContent>
-
-        <TabsContent value="rejected" className="mt-6">
-          {renderSubmissions('rejected')}
-        </TabsContent>
-      </Tabs>
-    </div>
+    <Tabs defaultValue="pending"><TabsList className="grid w-full grid-cols-3"><TabsTrigger value="pending">En attente ({submissions.filter(s => s.status === 'pending').length})</TabsTrigger><TabsTrigger value="approved">Approuvées ({submissions.filter(s => s.status === 'approved').length})</TabsTrigger><TabsTrigger value="rejected">Rejetées ({submissions.filter(s => s.status === 'rejected').length})</TabsTrigger></TabsList><TabsContent value="pending" className="mt-6">{renderSubmissions('pending')}</TabsContent><TabsContent value="approved" className="mt-6">{renderSubmissions('approved')}</TabsContent><TabsContent value="rejected" className="mt-6">{renderSubmissions('rejected')}</TabsContent></Tabs>
   );
 };
 

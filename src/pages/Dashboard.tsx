@@ -28,9 +28,15 @@ const Dashboard = () => {
 
       setUser(session.user);
       
-      // Check if admin
-      const adminEmails = ['admin@gardiens.paris', 'organisateur@gardiens.paris'];
-      setIsAdmin(adminEmails.includes(session.user.email || ''));
+      // Check if user has admin role
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', session.user.id)
+        .eq('role', 'admin')
+        .single();
+
+      setIsAdmin(!!roleData);
       
       await loadKeys(session.user.id);
       setLoading(false);

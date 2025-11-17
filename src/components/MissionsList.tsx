@@ -3,10 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, CheckCircle2, Camera, Upload, Loader2, Navigation } from 'lucide-react';
+import { CheckCircle2, Camera, Upload, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import MissionMap from './MissionMap';
-import MapboxConfig from './MapboxConfig';
 
 interface MissionsListProps {
   userId: string;
@@ -21,7 +19,7 @@ const MISSIONS = [
     location: 'Pont-Neuf, Paris 1er',
     description: 'Trouvez le mascaron qui souffle sur la Seine',
     keyReward: 'eau',
-    instructions: 'Scannez le QR code près du mascaron ou entrez le code trouvé.',
+    instructions: 'Photographiez le mascaron près du Pont-Neuf.',
   },
   {
     id: 'pantheon',
@@ -30,7 +28,7 @@ const MISSIONS = [
     location: 'Place du Panthéon, Paris 5e',
     description: 'Répondez au quiz sur les illustres personnages',
     keyReward: 'temps',
-    instructions: 'Visitez le Panthéon et répondez aux questions sur Marie Curie et Voltaire.',
+    instructions: 'Visitez le Panthéon et photographiez le Pendule.',
   },
   {
     id: 'musee-orsay',
@@ -48,16 +46,16 @@ const MISSIONS = [
     location: 'Champ de Mars, Paris 7e',
     description: 'Photo avec "Paix" + Tour Eiffel en reflet',
     keyReward: 'air',
-    instructions: 'Prenez une photo du mot "Paix" dans votre langue avec la Tour Eiffel en arrière-plan.',
+    instructions: 'Prenez une photo du mot "Paix" avec la Tour Eiffel.',
   },
   {
     id: 'place-vendome',
     day: 3,
     title: 'Place Vendôme - Le Cadran Solaire',
     location: 'Place Vendôme, Paris 1er',
-    description: 'Notez le numéro indiqué par l\'ombre à l\'heure précise',
+    description: 'Notez le numéro indiqué par l\'ombre',
     keyReward: 'feu',
-    instructions: 'Observez la colonne comme cadran solaire et photographiez un reflet du soleil.',
+    instructions: 'Photographiez un reflet du soleil sur la colonne.',
   },
   {
     id: 'arc-triomphe',
@@ -66,7 +64,7 @@ const MISSIONS = [
     location: 'Place Charles de Gaulle, Paris 8e',
     description: 'Assemblez les 4 clés pour raviver la Lumière',
     keyReward: null,
-    instructions: 'Flamme du Soldat inconnu + dalle de l\'Appel du 18 juin. Rallumez la Lumière de Paris.',
+    instructions: 'Flamme du Soldat inconnu. Rallumez la Lumière de Paris.',
   },
 ];
 
@@ -75,28 +73,11 @@ const MissionsList = ({ userId, onKeyCollected }: MissionsListProps) => {
   const [completedMissions, setCompletedMissions] = useState<string[]>([]);
   const [uploadingMission, setUploadingMission] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<Record<string, File>>({});
-  const [missionConfigs, setMissionConfigs] = useState<any[]>([]);
-  const [mapboxToken, setMapboxToken] = useState<string>('');
-  const [locationStatus, setLocationStatus] = useState<Record<string, {valid: boolean; distance: number}>>({});
-  const [selectedMission, setSelectedMission] = useState<string | null>(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
     loadProgress();
-    loadMissionConfigs();
   }, [userId]);
-
-  const loadMissionConfigs = async () => {
-    const { data } = await supabase
-      .from('mission_configs')
-      .select('*')
-      .order('day', { ascending: true })
-      .order('order_index', { ascending: true });
-    
-    if (data) {
-      setMissionConfigs(data);
-    }
-  };
 
   const loadProgress = async () => {
     const { data } = await supabase
@@ -110,37 +91,17 @@ const MissionsList = ({ userId, onKeyCollected }: MissionsListProps) => {
     }
   };
 
-  const handleFileSelect = (missionId: string, file: File | null) => {
-    if (file) {
-      setSelectedFiles(prev => ({ ...prev, [missionId]: file }));
-    } else {
-      setSelectedFiles(prev => {
-        const { [missionId]: _, ...rest } = prev;
-        return rest;
-      });
-    }
+  const handleFileSelect = (missionId: string, file: File) => {
+    setSelectedFiles((prev) => ({ ...prev, [missionId]: file }));
   };
 
-  const handleUploadPhoto = async (missionId: string, keyReward: string | null) => {
+  const handleUploadPhoto = async (missionId: string) => {
     const file = selectedFiles[missionId];
     if (!file) {
       toast({
-        title: "Photo requise",
-        description: "Veuillez sélectionner une photo avant de soumettre.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Check location if required
-    const missionConfig = missionConfigs.find(m => m.mission_id === missionId);
-    const locationValid = locationStatus[missionId]?.valid ?? false;
-    
-    if (missionConfig?.target_lat && missionConfig?.target_lng && !locationValid) {
-      toast({
-        title: "Position invalide",
-        description: `Vous devez être à moins de ${missionConfig.radius_meters}m de la cible pour valider cette mission.`,
-        variant: "destructive",
+        title: 'Aucune photo sélectionnée',
+        description: 'Veuillez sélectionner une photo à envoyer.',
+        variant: 'destructive',
       });
       return;
     }
@@ -150,13 +111,10 @@ const MissionsList = ({ userId, onKeyCollected }: MissionsListProps) => {
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${userId}/${missionId}-${Date.now()}.${fileExt}`;
-      
+
       const { error: uploadError } = await supabase.storage
         .from('mission-proofs')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
+        .upload(fileName, file);
 
       if (uploadError) throw uploadError;
 
@@ -167,254 +125,134 @@ const MissionsList = ({ userId, onKeyCollected }: MissionsListProps) => {
       const { error: submissionError } = await supabase
         .from('submissions')
         .insert({
-          mission_id: missionId,
           user_id: userId,
+          mission_id: missionId,
           type: 'photo',
           photo_url: publicUrl,
-          status: 'pending'
         });
 
       if (submissionError) throw submissionError;
 
       toast({
-        title: "Photo envoyée !",
-        description: "Ta preuve est en cours de validation par les Gardiens.",
+        title: 'Photo envoyée !',
+        description: 'Votre preuve a été soumise pour validation.',
       });
 
-      handleFileSelect(missionId, null);
+      setSelectedFiles((prev) => {
+        const newFiles = { ...prev };
+        delete newFiles[missionId];
+        return newFiles;
+      });
+
+      if (fileInputRefs.current[missionId]) {
+        fileInputRefs.current[missionId]!.value = '';
+      }
 
     } catch (error: any) {
       console.error('Upload error:', error);
       toast({
-        title: "Erreur d'envoi",
-        description: error.message || "Impossible d'envoyer la photo.",
-        variant: "destructive",
-      });
-    } finally {
-      setUploadingMission(null);
-    }
-  };
-
-  const handleCompleteMission = async (missionId: string, keyReward: string | null) => {
-    const { error } = await supabase
-      .from('missions_progress')
-      .upsert({
-        user_id: userId,
-        mission_id: missionId,
-        day: MISSIONS.find((m) => m.id === missionId)?.day || 1,
-        completed: true,
-        validated_at: new Date().toISOString(),
-      });
-
-    if (error) {
-      toast({
-        title: 'Erreur',
-        description: 'Impossible de valider la mission',
+        title: 'Erreur d\'envoi',
+        description: error.message || 'Impossible d\'envoyer la photo',
         variant: 'destructive',
       });
-      return;
     }
 
-    // Collecter la clé si applicable
-    if (keyReward) {
-      const { error: keyError } = await supabase
-        .from('keys_collected')
-        .insert({
-          user_id: userId,
-          key_type: keyReward,
-        });
-
-      if (!keyError) {
-        onKeyCollected(keyReward);
-        toast({
-          title: '✨ Clé collectée !',
-          description: `La clé de ${keyReward} brille désormais dans votre inventaire.`,
-        });
-      }
-    }
-
-    setCompletedMissions([...completedMissions, missionId]);
-    toast({
-      title: 'Mission accomplie !',
-      description: 'La Lumière grandit grâce à vous.',
-    });
+    setUploadingMission(null);
   };
+
+  const isCompleted = (missionId: string) => completedMissions.includes(missionId);
 
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-bold text-primary mb-4">Missions</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-foreground">Vos Missions</h2>
+        <Badge variant="outline" className="text-sm">
+          {completedMissions.length}/{MISSIONS.length} terminées
+        </Badge>
+      </div>
 
-      {!mapboxToken && <MapboxConfig onTokenSet={setMapboxToken} />}
+      <div className="space-y-4">
+        {MISSIONS.map((mission) => {
+          const completed = isCompleted(mission.id);
+          const uploading = uploadingMission === mission.id;
+          const hasFile = !!selectedFiles[mission.id];
 
-      {[1, 2, 3].map((day) => (
-        <div key={day}>
-          <div className="flex items-center gap-3 mb-4">
-            <Badge variant="outline" className="text-lg px-4 py-1 border-primary/50 text-primary">
-              Jour {day}
-            </Badge>
-          </div>
+          return (
+            <Card
+              key={mission.id}
+              className={`p-6 transition-all ${
+                completed
+                  ? 'bg-primary/5 border-primary/30'
+                  : 'bg-card hover:border-primary/40'
+              }`}
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="text-xl font-bold text-foreground">{mission.title}</h3>
+                    {completed && <CheckCircle2 className="w-6 h-6 text-green-600" />}
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-1">{mission.location}</p>
+                  <p className="text-foreground mb-3">{mission.description}</p>
+                  <p className="text-sm text-muted-foreground italic">{mission.instructions}</p>
+                </div>
+                <Badge variant={completed ? 'default' : 'secondary'} className="ml-4 whitespace-nowrap">
+                  Jour {mission.day}
+                </Badge>
+              </div>
 
-          <div className="space-y-4">
-            {MISSIONS.filter((m) => m.day === day).map((mission) => {
-              const completed = completedMissions.includes(mission.id);
-              const missionConfig = missionConfigs.find(m => m.mission_id === mission.id);
-              const hasLocation = missionConfig?.target_lat && missionConfig?.target_lng;
-              const locationData = locationStatus[mission.id];
-              const isLocationValid = locationData?.valid ?? false;
+              {mission.keyReward && (
+                <div className="mb-4 p-3 bg-primary/10 rounded-lg border border-primary/30">
+                  <p className="text-sm font-medium text-primary">
+                    🔑 Récompense : Clé {mission.keyReward.charAt(0).toUpperCase() + mission.keyReward.slice(1)}
+                  </p>
+                </div>
+              )}
 
-              return (
-                <Card
-                  key={mission.id}
-                  className={`p-6 border transition-all ${
-                    completed
-                      ? 'border-secondary/50 bg-secondary/10'
-                      : 'border-primary/20 hover:border-primary/40 hover:shadow-[0_0_15px_hsl(43,96%,56%,0.1)]'
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <h3 className="text-xl font-bold text-foreground mb-1">
-                        {mission.title}
-                      </h3>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <MapPin className="w-4 h-4" />
-                        {mission.location}
+              {!completed && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <input
+                      ref={(el) => (fileInputRefs.current[mission.id] = el)}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleFileSelect(mission.id, file);
+                      }}
+                      className="hidden"
+                      id={`file-${mission.id}`}
+                    />
+                    <label htmlFor={`file-${mission.id}`} className="flex-1 cursor-pointer">
+                      <div className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-primary/40 rounded-lg bg-background hover:bg-primary/5 transition-colors">
+                        <Camera className="w-5 h-5 text-primary" />
+                        <span className="text-sm font-medium text-foreground">
+                          {hasFile ? selectedFiles[mission.id].name : 'Prendre une photo'}
+                        </span>
                       </div>
-                    </div>
-                    {completed && <CheckCircle2 className="w-6 h-6 text-secondary" />}
+                    </label>
                   </div>
 
-                  <p className="text-foreground/80 mb-3">{mission.description}</p>
-                  <p className="text-sm text-muted-foreground mb-4">{mission.instructions}</p>
-
-                  {mission.keyReward && (
-                    <Badge className="mb-4 bg-primary/20 text-primary border-primary/30">
-                      Récompense : Clé de {mission.keyReward}
-                    </Badge>
-                  )}
-
-                  {/* Map for missions with GPS validation */}
-                  {!completed && hasLocation && mapboxToken && selectedMission === mission.id && (
-                    <div className="mb-4">
-                      <MissionMap
-                        mapboxToken={mapboxToken}
-                        userId={userId}
-                        targetLat={missionConfig.target_lat}
-                        targetLng={missionConfig.target_lng}
-                        radiusMeters={missionConfig.radius_meters || 100}
-                        onLocationValid={(isValid, distance) => {
-                          setLocationStatus(prev => ({
-                            ...prev,
-                            [mission.id]: { valid: isValid, distance }
-                          }));
-                        }}
-                      />
-                      {locationData && (
-                        <div className={`mt-2 p-3 rounded-lg text-sm ${
-                          isLocationValid 
-                            ? 'bg-secondary/20 text-secondary' 
-                            : 'bg-destructive/20 text-destructive'
-                        }`}>
-                          {isLocationValid ? (
-                            <span>✓ Vous êtes dans la zone ({Math.round(locationData.distance)}m de la cible)</span>
-                          ) : (
-                            <span>✗ Vous êtes à {Math.round(locationData.distance)}m de la cible</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {!completed && hasLocation && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSelectedMission(selectedMission === mission.id ? null : mission.id)}
-                      className="mb-3 w-full border-accent/50 text-accent hover:bg-accent/10"
-                    >
-                      <Navigation className="w-4 h-4 mr-2" />
-                      {selectedMission === mission.id ? 'Masquer la carte' : 'Afficher la carte'}
-                    </Button>
-                  )}
-
-                  {!completed && (
-                    <div className="space-y-3">
-                      <div className="border-2 border-dashed border-primary/20 rounded-lg p-4">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          ref={(el) => { fileInputRefs.current[mission.id] = el; }}
-                          onChange={(e) => handleFileSelect(mission.id, e.target.files?.[0] || null)}
-                          className="hidden"
-                        />
-                        
-                        {selectedFiles[mission.id] ? (
-                          <div className="space-y-2">
-                            <div className="relative aspect-video rounded-lg overflow-hidden bg-muted">
-                              <img 
-                                src={URL.createObjectURL(selectedFiles[mission.id])} 
-                                alt="Preview" 
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => fileInputRefs.current[mission.id]?.click()}
-                                className="flex-1"
-                              >
-                                <Camera className="w-4 h-4 mr-2" />
-                                Changer
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleFileSelect(mission.id, null)}
-                                className="flex-1"
-                              >
-                                Annuler
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            onClick={() => fileInputRefs.current[mission.id]?.click()}
-                            className="w-full h-32 flex flex-col gap-2 border-0"
-                          >
-                            <Camera className="w-8 h-8 text-primary" />
-                            <span className="text-sm">Ajouter une preuve photo</span>
-                          </Button>
-                        )}
-                      </div>
-
-                      <Button 
-                        onClick={() => handleUploadPhoto(mission.id, mission.keyReward)}
-                        disabled={!selectedFiles[mission.id] || uploadingMission === mission.id}
-                        className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-                      >
-                        {uploadingMission === mission.id ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Envoi en cours...
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="w-4 h-4 mr-2" />
-                            Envoyer la preuve
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  )}
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+                  <Button onClick={() => handleUploadPhoto(mission.id)} disabled={!hasFile || uploading} className="w-full">
+                    {uploading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Envoi en cours...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 mr-2" />
+                        Envoyer la preuve
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
     </div>
   );
 };
