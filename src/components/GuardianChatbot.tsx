@@ -166,10 +166,10 @@ const GuardianChatbot = ({ userId, userProgress }: GuardianChatbotProps) => {
             <Button
               onClick={() => setIsOpen(false)}
               variant="ghost"
-              size="sm"
-              className="text-primary-foreground hover:bg-primary-foreground/20"
+              size="icon"
+              className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </Button>
           </div>
 
