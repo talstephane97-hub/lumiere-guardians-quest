@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, ArrowLeft } from 'lucide-react';
+import AdminDashboard from '@/components/AdminDashboard';
 import AdminValidation from '@/components/AdminValidation';
 import type { User } from '@supabase/supabase-js';
 
@@ -74,7 +76,20 @@ const Admin = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-6 py-8">
-        <AdminValidation />
+        <Tabs defaultValue="dashboard" className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="dashboard">Tableau de bord</TabsTrigger>
+            <TabsTrigger value="validation">Validation</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="dashboard">
+            <AdminDashboard />
+          </TabsContent>
+          
+          <TabsContent value="validation">
+            <AdminValidation />
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );

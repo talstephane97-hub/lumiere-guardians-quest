@@ -154,11 +154,19 @@ const GuardianChatbot = ({ userId, userProgress }: GuardianChatbotProps) => {
         </Button>
       )}
 
+      {/* Backdrop */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/20 z-40 animate-in fade-in"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+
       {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-6 right-6 w-96 h-[600px] bg-card border border-primary/30 rounded-xl shadow-[0_0_40px_hsl(43,96%,56%,0.3)] flex flex-col z-50">
+        <div className="fixed bottom-6 right-6 w-96 h-[400px] bg-card border border-primary/30 rounded-xl shadow-[0_0_40px_hsl(43,96%,56%,0.3)] flex flex-col z-50">
           {/* Header */}
-          <div className="bg-primary text-primary-foreground p-4 rounded-t-xl flex items-center justify-between">
+          <div className="bg-primary text-primary-foreground p-3 rounded-t-xl flex items-center justify-between">
             <div className="flex items-center gap-2">
               <MessageCircle className="w-5 h-5" />
               <span className="font-bold">Voix de la Lumière</span>
