@@ -6,6 +6,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import AdminDashboard from '@/components/AdminDashboard';
 import AdminValidation from '@/components/AdminValidation';
+import AdminUsersManagement from '@/components/AdminUsersManagement';
+import MissionManagement from '@/components/MissionManagement';
+import HintsManagement from '@/components/HintsManagement';
 import type { User } from '@supabase/supabase-js';
 
 const Admin = () => {
@@ -77,9 +80,12 @@ const Admin = () => {
       {/* Main Content */}
       <main className="container mx-auto px-6 py-8">
         <Tabs defaultValue="dashboard" className="space-y-6">
-          <TabsList>
+          <TabsList className="grid grid-cols-5 w-full">
             <TabsTrigger value="dashboard">Tableau de bord</TabsTrigger>
             <TabsTrigger value="validation">Validation</TabsTrigger>
+            <TabsTrigger value="admins">Admins</TabsTrigger>
+            <TabsTrigger value="missions">Missions</TabsTrigger>
+            <TabsTrigger value="hints">Indices</TabsTrigger>
           </TabsList>
           
           <TabsContent value="dashboard">
@@ -88,6 +94,18 @@ const Admin = () => {
           
           <TabsContent value="validation">
             <AdminValidation />
+          </TabsContent>
+
+          <TabsContent value="admins">
+            <AdminUsersManagement />
+          </TabsContent>
+
+          <TabsContent value="missions">
+            <MissionManagement />
+          </TabsContent>
+
+          <TabsContent value="hints">
+            <HintsManagement />
           </TabsContent>
         </Tabs>
       </main>
