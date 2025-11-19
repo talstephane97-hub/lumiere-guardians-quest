@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { Map, Plus, Save, Trash2 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
+import MissionReferenceImages from './MissionReferenceImages';
 
 interface Mission {
   mission_id: string;
@@ -60,11 +61,17 @@ const MissionManagement = () => {
         .from('mission_configs')
         .update({
           title: editingMission.title,
+          description: (editingMission as any).description,
+          instructions: (editingMission as any).instructions,
+          regeneration_type: (editingMission as any).regeneration_type,
+          points: (editingMission as any).points,
           ai_validation_prompt: editingMission.ai_validation_prompt,
           location_lat: editingMission.location_lat,
           location_lng: editingMission.location_lng,
           radius_meters: editingMission.radius_meters,
-          code_verb: editingMission.code_verb
+          code_verb: editingMission.code_verb,
+          auto_validation_enabled: (editingMission as any).auto_validation_enabled,
+          auto_validation_threshold: (editingMission as any).auto_validation_threshold
         })
         .eq('mission_id', editingMission.mission_id);
 
@@ -123,12 +130,61 @@ const MissionManagement = () => {
               
               {editingMission?.mission_id === mission.mission_id && (
                 <CardContent className="space-y-4">
+                  {/* Images de référence */}
+                  <MissionReferenceImages missionId={mission.mission_id} />
                   <div>
                     <Label>Titre de la mission</Label>
                     <Input
                       value={editingMission.title}
                       onChange={(e) => setEditingMission({ ...editingMission, title: e.target.value })}
                     />
+                  </div>
+
+                  <div>
+                    <Label>Description</Label>
+                    <Textarea
+                      value={(editingMission as any).description || ''}
+                      onChange={(e) => setEditingMission({ ...editingMission, description: e.target.value } as any)}
+                      rows={2}
+                      placeholder="Description de la mission..."
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Instructions</Label>
+                    <Textarea
+                      value={(editingMission as any).instructions || ''}
+                      onChange={(e) => setEditingMission({ ...editingMission, instructions: e.target.value } as any)}
+                      rows={2}
+                      placeholder="Instructions pour le joueur..."
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Type de régénération</Label>
+                      <select
+                        value={(editingMission as any).regeneration_type || ''}
+                        onChange={(e) => setEditingMission({ ...editingMission, regeneration_type: e.target.value } as any)}
+                        className="w-full p-2 rounded-md border border-input bg-background"
+                      >
+                        <option value="">Sélectionner...</option>
+                        <option value="REGARD">REGARD</option>
+                        <option value="ESPACE">ESPACE</option>
+                        <option value="LIEN">LIEN SOCIAL</option>
+                        <option value="SYMBOLE">SYMBOLE</option>
+                        <option value="AUTRE">AUTRE</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <Label>Points de base</Label>
+                      <Input
+                        type="number"
+                        value={(editingMission as any).points || 100}
+                        onChange={(e) => setEditingMission({ ...editingMission, points: parseInt(e.target.value) } as any)}
+                      />
+                    </div>
                   </div>
 
                   <div>
@@ -178,6 +234,38 @@ const MissionManagement = () => {
                       value={editingMission.radius_meters || 100}
                       onChange={(e) => setEditingMission({ ...editingMission, radius_meters: parseInt(e.target.value) })}
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id={`auto-val-${editingMission.mission_id}`}
+                        checked={(editingMission as any).auto_validation_enabled || false}
+                        onChange={(e) => setEditingMission({ ...editingMission, auto_validation_enabled: e.target.checked } as any)}
+                        className="w-4 h-4"
+                      />
+                      <Label htmlFor={`auto-val-${editingMission.mission_id}`}>
+                        Activer la validation automatique par IA
+                      </Label>
+                    </div>
+                    
+                    {(editingMission as any).auto_validation_enabled && (
+                      <div>
+                        <Label>Seuil de similarité (0.0 - 1.0)</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          min="0"
+                          max="1"
+                          value={(editingMission as any).auto_validation_threshold || 0.7}
+                          onChange={(e) => setEditingMission({ ...editingMission, auto_validation_threshold: parseFloat(e.target.value) } as any)}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Recommandé : 0.7 (70% de similarité)
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <Button onClick={saveMission} className="w-full">

@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,112 +12,177 @@ serve(async (req) => {
   }
 
   try {
-    const { photoUrl, validationPrompt, missionId } = await req.json();
-    
+    const { submissionPhotoUrl, missionId } = await req.json();
+
+    if (!submissionPhotoUrl || !missionId) {
+      return new Response(
+        JSON.stringify({ error: 'submissionPhotoUrl et missionId requis' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // Récupérer les images de référence pour cette mission
+    const { data: referenceImages, error: refError } = await supabaseClient
+      .from('mission_reference_images')
+      .select('image_url')
+      .eq('mission_id', missionId);
+
+    if (refError) {
+      console.error('Erreur récupération images de référence:', refError);
+      return new Response(
+        JSON.stringify({ error: 'Erreur récupération images de référence', validated: false }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Si pas d'images de référence, retourner non validé automatiquement
+    if (!referenceImages || referenceImages.length === 0) {
+      console.log('Pas d\'images de référence pour cette mission');
+      return new Response(
+        JSON.stringify({
+          validated: false,
+          similarityScore: 0,
+          reason: 'Aucune image de référence configurée'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Récupérer le seuil de validation pour cette mission
+    const { data: missionConfig } = await supabaseClient
+      .from('mission_configs')
+      .select('auto_validation_threshold, auto_validation_enabled')
+      .eq('mission_id', missionId)
+      .single();
+
+    const autoValidationEnabled = missionConfig?.auto_validation_enabled ?? false;
+    const threshold = missionConfig?.auto_validation_threshold ?? 0.7;
+
+    if (!autoValidationEnabled) {
+      console.log('Validation automatique désactivée pour cette mission');
+      return new Response(
+        JSON.stringify({
+          validated: false,
+          similarityScore: 0,
+          reason: 'Validation automatique désactivée'
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Utiliser Lovable AI pour comparer les images
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+      console.error('LOVABLE_API_KEY non configuré');
+      return new Response(
+        JSON.stringify({ error: 'Configuration API manquante', validated: false }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    console.log(`Validating photo for mission ${missionId}`);
+    // Pour chaque image de référence, demander à l'IA de comparer
+    let maxSimilarity = 0;
+    let bestMatch = '';
 
-    // Call Lovable AI with vision capabilities
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          {
-            role: 'system',
-            content: `Tu es un validateur d'images pour un jeu de piste à Paris. 
-            Tu dois analyser les photos et déterminer si elles correspondent aux critères demandés.
-            Réponds UNIQUEMENT par un JSON avec cette structure:
-            {
-              "valid": true/false,
-              "reason": "explication courte en français",
-              "confidence": 0-100
-            }`
+    for (const refImage of referenceImages) {
+      const prompt = `Analyse ces deux images et dis-moi si elles montrent le même sujet, lieu ou objet.
+      
+Image de référence attendue : ${refImage.image_url}
+Image soumise par l'utilisateur : ${submissionPhotoUrl}
+
+Réponds UNIQUEMENT par un score de similarité entre 0 et 1, où :
+- 1.0 = images identiques ou presque identiques (même sujet, même angle)
+- 0.8-0.9 = même sujet principal visible, angles légèrement différents
+- 0.6-0.7 = même lieu ou objet mais différences notables
+- 0.4-0.5 = sujet similaire mais contexte différent
+- 0.0-0.3 = sujets différents
+
+Réponds seulement avec le nombre (ex: 0.85)`;
+
+      try {
+        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+            'Content-Type': 'application/json',
           },
-          {
-            role: 'user',
-            content: [
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash',
+            messages: [
               {
-                type: 'text',
-                text: validationPrompt
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: photoUrl
-                }
+                role: 'user',
+                content: [
+                  { type: 'text', text: prompt },
+                  { type: 'image_url', image_url: { url: refImage.image_url } },
+                  { type: 'image_url', image_url: { url: submissionPhotoUrl } }
+                ]
               }
-            ]
-          }
-        ],
-        temperature: 0.3,
-        max_tokens: 200
-      }),
-    });
+            ],
+            max_tokens: 50
+          }),
+        });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ 
-            error: 'rate_limit',
-            message: 'Trop de requêtes, veuillez réessayer dans quelques instants.' 
-          }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        if (aiResponse.status === 429) {
+          console.error('Rate limit atteint pour Lovable AI');
+          continue;
+        }
+
+        if (aiResponse.status === 402) {
+          console.error('Crédits Lovable AI épuisés');
+          return new Response(
+            JSON.stringify({ error: 'Crédits AI épuisés', validated: false }),
+            { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (!aiResponse.ok) {
+          console.error('Erreur API Lovable AI:', aiResponse.status);
+          continue;
+        }
+
+        const aiData = await aiResponse.json();
+        const aiText = aiData.choices?.[0]?.message?.content || '0';
+        const similarity = parseFloat(aiText.trim());
+
+        console.log(`Similarité calculée: ${similarity} pour ${refImage.image_url}`);
+
+        if (similarity > maxSimilarity) {
+          maxSimilarity = similarity;
+          bestMatch = refImage.image_url;
+        }
+      } catch (error) {
+        console.error('Erreur lors de la comparaison:', error);
       }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ 
-            error: 'insufficient_credits',
-            message: 'Crédits insuffisants pour la validation.' 
-          }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      throw new Error(`AI validation failed: ${response.status}`);
     }
 
-    const data = await response.json();
-    const aiResponse = data.choices[0].message.content;
-    
-    console.log('AI validation response:', aiResponse);
+    const validated = maxSimilarity >= threshold;
 
-    // Parse AI response
-    let validationResult;
-    try {
-      validationResult = JSON.parse(aiResponse);
-    } catch (e) {
-      // If AI didn't return valid JSON, extract info from text
-      const valid = aiResponse.toLowerCase().includes('valid') && 
-                   !aiResponse.toLowerCase().includes('non valid') &&
-                   !aiResponse.toLowerCase().includes('invalide');
-      validationResult = {
-        valid,
-        reason: aiResponse.substring(0, 200),
-        confidence: valid ? 70 : 30
-      };
-    }
+    console.log(`Validation finale: ${validated} (score: ${maxSimilarity}, seuil: ${threshold})`);
 
     return new Response(
-      JSON.stringify(validationResult),
+      JSON.stringify({
+        validated,
+        similarityScore: maxSimilarity,
+        bestMatch,
+        threshold,
+        reason: validated 
+          ? 'Image validée automatiquement' 
+          : 'Similarité insuffisante - validation manuelle requise'
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('Error in validate-photo function:', error);
+    console.error('Erreur dans validate-photo:', error);
     return new Response(
       JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'Unknown error',
-        valid: false,
-        reason: 'Erreur lors de la validation'
+        error: error instanceof Error ? error.message : 'Unknown error', 
+        validated: false 
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

@@ -62,14 +62,21 @@ export type Database = {
       mission_configs: {
         Row: {
           ai_validation_prompt: string | null
+          auto_validation_enabled: boolean | null
+          auto_validation_threshold: number | null
+          bonus_points: number | null
           code_verb: string | null
           code_verb_lang: string | null
           day: number
+          description: string | null
+          instructions: string | null
           location_lat: number | null
           location_lng: number | null
           mission_id: string
           order_index: number
+          points: number | null
           radius_meters: number | null
+          regeneration_type: string | null
           requires_photo: boolean | null
           target_lat: number | null
           target_lng: number | null
@@ -78,14 +85,21 @@ export type Database = {
         }
         Insert: {
           ai_validation_prompt?: string | null
+          auto_validation_enabled?: boolean | null
+          auto_validation_threshold?: number | null
+          bonus_points?: number | null
           code_verb?: string | null
           code_verb_lang?: string | null
           day: number
+          description?: string | null
+          instructions?: string | null
           location_lat?: number | null
           location_lng?: number | null
           mission_id: string
           order_index: number
+          points?: number | null
           radius_meters?: number | null
+          regeneration_type?: string | null
           requires_photo?: boolean | null
           target_lat?: number | null
           target_lng?: number | null
@@ -94,14 +108,21 @@ export type Database = {
         }
         Update: {
           ai_validation_prompt?: string | null
+          auto_validation_enabled?: boolean | null
+          auto_validation_threshold?: number | null
+          bonus_points?: number | null
           code_verb?: string | null
           code_verb_lang?: string | null
           day?: number
+          description?: string | null
+          instructions?: string | null
           location_lat?: number | null
           location_lng?: number | null
           mission_id?: string
           order_index?: number
+          points?: number | null
           radius_meters?: number | null
+          regeneration_type?: string | null
           requires_photo?: boolean | null
           target_lat?: number | null
           target_lng?: number | null
@@ -109,6 +130,41 @@ export type Database = {
           validation_type?: string | null
         }
         Relationships: []
+      }
+      mission_reference_images: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          image_url: string
+          mission_id: string
+          tags: string[] | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          image_url: string
+          mission_id: string
+          tags?: string[] | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          image_url?: string
+          mission_id?: string
+          tags?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mission_reference_images_mission_id_fkey"
+            columns: ["mission_id"]
+            isOneToOne: false
+            referencedRelation: "mission_configs"
+            referencedColumns: ["mission_id"]
+          },
+        ]
       }
       missions_progress: {
         Row: {
@@ -173,6 +229,39 @@ export type Database = {
         }
         Relationships: []
       }
+      player_scores: {
+        Row: {
+          bonus_points: number | null
+          euros_value: number | null
+          id: string
+          keys_points: number | null
+          regeneration_points: number | null
+          total_points: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          bonus_points?: number | null
+          euros_value?: number | null
+          id?: string
+          keys_points?: number | null
+          regeneration_points?: number | null
+          total_points?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          bonus_points?: number | null
+          euros_value?: number | null
+          id?: string
+          keys_points?: number | null
+          regeneration_points?: number | null
+          total_points?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -233,6 +322,7 @@ export type Database = {
       submissions: {
         Row: {
           ai_validation_result: string | null
+          auto_validated: boolean | null
           code_verb_entered: string | null
           created_at: string
           distance_from_target: number | null
@@ -245,6 +335,7 @@ export type Database = {
           photo_url: string | null
           reviewed_at: string | null
           reviewed_by: string | null
+          similarity_score: number | null
           status: string
           team_id: string | null
           type: string
@@ -253,6 +344,7 @@ export type Database = {
         }
         Insert: {
           ai_validation_result?: string | null
+          auto_validated?: boolean | null
           code_verb_entered?: string | null
           created_at?: string
           distance_from_target?: number | null
@@ -265,6 +357,7 @@ export type Database = {
           photo_url?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          similarity_score?: number | null
           status?: string
           team_id?: string | null
           type: string
@@ -273,6 +366,7 @@ export type Database = {
         }
         Update: {
           ai_validation_result?: string | null
+          auto_validated?: boolean | null
           code_verb_entered?: string | null
           created_at?: string
           distance_from_target?: number | null
@@ -285,6 +379,7 @@ export type Database = {
           photo_url?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          similarity_score?: number | null
           status?: string
           team_id?: string | null
           type?: string

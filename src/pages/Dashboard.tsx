@@ -7,6 +7,7 @@ import { Loader2, Sparkles, LogOut, Shield } from 'lucide-react';
 import KeysInventory from '@/components/KeysInventory';
 import MissionsList from '@/components/MissionsList';
 import GuardianChatbot from '@/components/GuardianChatbot';
+import PlayerScoreDisplay from '@/components/PlayerScoreDisplay';
 import type { User } from '@supabase/supabase-js';
 
 const Dashboard = () => {
