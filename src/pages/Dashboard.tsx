@@ -9,6 +9,40 @@ import MissionsList from '@/components/MissionsList';
 import GuardianChatbot from '@/components/GuardianChatbot';
 import PlayerScoreDisplay from '@/components/PlayerScoreDisplay';
 import type { User } from '@supabase/supabase-js';
+import { uploadMissionProof } from '@/lib/missionSubmissions';
+import { useGeolocation } from '@/hooks/use-geolocation';
+
+// 🔹 Point cible exemple (à remplacer par tes vraies coordonnées plus tard)
+const TARGET_LOCATION = {
+  lat: 48.858370,
+  lng: 2.294481,
+};
+
+const TARGET_RADIUS_METERS = 100;
+
+function getDistanceFromLatLonInMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const R = 6371000;
+  const toRad = (value: number) => (value * Math.PI) / 180;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -17,6 +51,15 @@ const Dashboard = () => {
   const [user, setUser] = useState<User | null>(null);
   const [keysCollected, setKeysCollected] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
+
+  // Upload photo
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Géolocalisation
+  const { coords, loading: geoLoading, error: geoError } = useGeolocation();
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -28,17 +71,10 @@ const Dashboard = () => {
       }
 
       setUser(session.user);
-      
-      // Check if user has admin role
-      const { data: roleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', session.user.id)
-        .eq('role', 'admin')
-        .single();
 
-      setIsAdmin(!!roleData);
-      
+      // 💡 Pour le moment, on considère que tout utilisateur connecté est admin
+      setIsAdmin(true);
+
       await loadKeys(session.user.id);
       setLoading(false);
     };
@@ -74,6 +110,64 @@ const Dashboard = () => {
       title: "À bientôt, Gardien",
       description: "La Lumière vous attend pour votre retour.",
     });
+  };
+
+  const handleUploadMissionProof = async () => {
+    if (!selectedFile) {
+      setUploadError('Veuillez sélectionner une photo.');
+      return;
+    }
+
+    if (!user) {
+      setUploadError('Utilisateur non connecté.');
+      return;
+    }
+
+    if (!coords) {
+      setUploadError(
+        "Impossible de récupérer ta position. Active la géolocalisation pour envoyer la photo."
+      );
+      return;
+    }
+
+    const distance = getDistanceFromLatLonInMeters(
+      coords.lat,
+      coords.lng,
+      TARGET_LOCATION.lat,
+      TARGET_LOCATION.lng
+    );
+
+    if (distance > TARGET_RADIUS_METERS) {
+      setUploadError(
+        `Tu es trop loin du lieu de la mission (~${Math.round(
+          distance
+        )} m). Rapproche-toi de la zone de mission.`
+      );
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setUploadError(null);
+      setUploadMessage(null);
+
+      await uploadMissionProof({
+        missionId: 'test-mission',
+        userId: user.id,
+        file: selectedFile,
+      });
+
+      setUploadMessage('Photo envoyée ! La mission est en attente de validation.');
+      setSelectedFile(null);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setUploadError(err.message);
+      } else {
+        setUploadError("Une erreur est survenue pendant l'envoi.");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -126,11 +220,66 @@ const Dashboard = () => {
 
           {/* Missions */}
           <div className="lg:col-span-2">
-            <MissionsList userId={user?.id || ''} onKeyCollected={(key) => {
-              setKeysCollected([...keysCollected, key]);
-            }} />
+            <MissionsList
+              userId={user?.id || ''}
+              onKeyCollected={(key) => {
+                setKeysCollected([...keysCollected, key]);
+              }}
+            />
           </div>
         </div>
+
+        {/* Upload de preuve de mission */}
+        <section className="mt-10 max-w-xl">
+          <h2 className="text-lg font-semibold mb-2">
+            Preuve de mission (photo)
+          </h2>
+
+          <input
+            type="file"
+            accept="image/*"
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              setSelectedFile(file);
+              setUploadError(null);
+              setUploadMessage(null);
+            }}
+            className="mb-3 block"
+          />
+
+          <Button
+            onClick={handleUploadMissionProof}
+            disabled={isSubmitting || !selectedFile}
+            variant="outline"
+          >
+            {isSubmitting ? 'Envoi en cours...' : 'Envoyer la photo'}
+          </Button>
+
+          {uploadMessage && (
+            <p className="text-sm text-green-600 mt-2">{uploadMessage}</p>
+          )}
+          {uploadError && (
+            <p className="text-sm text-red-600 mt-2">{uploadError}</p>
+          )}
+
+          {geoLoading && (
+            <p className="text-sm text-muted-foreground mt-2">
+              Récupération de ta position...
+            </p>
+          )}
+
+          {geoError && (
+            <p className="text-sm text-red-600 mt-2">
+              Géolocalisation désactivée : {geoError}
+            </p>
+          )}
+
+          {coords && !geoError && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Position détectée : {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+            </p>
+          )}
+        </section>
       </main>
 
       {/* Chatbot */}
