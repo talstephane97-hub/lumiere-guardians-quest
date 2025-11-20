@@ -19,16 +19,8 @@ import type { Database } from "@/integrations/supabase/types";
 type SubmissionRow = Database["public"]["Tables"]["submissions"]["Row"];
 type MissionRefImageRow =
   Database["public"]["Tables"]["mission_reference_images"]["Row"];
-
-// Mission vue par l'admin : juste un id
-type AdminMission = {
-  id: string;
-};
-
-// Profil simplifié : juste l’ID
-type SimpleProfile = {
-  id: string;
-};
+type AdminMission = { id: string };
+type SimpleProfile = { id: string };
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -59,7 +51,7 @@ const Admin = () => {
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [updatingRoleIds, setUpdatingRoleIds] = useState<string[]>([]);
 
-  // 🔹 Vérifier que l’utilisateur est connecté et charger les données
+  // 🔹 Vérifier que l’utilisateur est connecté et admin, puis charger les données
   useEffect(() => {
     const checkAuth = async () => {
       const {
@@ -68,6 +60,19 @@ const Admin = () => {
 
       if (!session) {
         navigate("/auth");
+        return;
+      }
+
+      // Vérifier que l'utilisateur est admin
+      const { data: roleData } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", session.user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+
+      if (!roleData) {
+        navigate("/");
         return;
       }
 
@@ -107,45 +112,59 @@ const Admin = () => {
     setLoadingSubmissions(false);
   };
 
-  // 🔹 Construire la liste des missions + charger les images de référence
+  // 🔹 Charger les missions + les images de référence
   const loadMissionsAndReferenceImages = async () => {
     setLoadingMissions(true);
 
-    // 1) Construire les missions à partir des submissions (mission_id distincts)
-    const { data: subMissions, error: subErr } = await supabase
-      .from("submissions")
-      .select("mission_id")
-      .not("mission_id", "is", null);
+    // 1) Missions depuis la table mission_configs (sans tri sur une colonne id)
+    const { data: missionsData, error: missionsError } = await supabase
+      .from("mission_configs")
+      .select("*");
 
-    if (subErr) {
-      console.error("Erreur loadMissions (submissions)", subErr);
-      // pas de toast pour ne pas t'inonder, on aura juste "aucune mission"
+    if (missionsError) {
+      console.error("Erreur loadMissions", missionsError);
+      toast({
+        title: "Erreur chargement missions",
+        description: missionsError.message || "Erreur inconnue Supabase.",
+        variant: "destructive",
+      });
       setMissions([]);
-    } else if (subMissions) {
-      const uniqueIds = Array.from(
-        new Set(
-          subMissions
-            .map((row) => row.mission_id)
-            .filter((id): id is string => !!id)
-        )
-      );
-
-      // Si aucune mission trouvée, on peut au moins proposer "test-mission"
-      if (uniqueIds.length === 0) {
-        setMissions([{ id: "test-mission" }]);
-      } else {
-        setMissions(uniqueIds.map((id) => ({ id })));
-      }
+      setLoadingMissions(false);
+      return;
     }
 
-    // 2) Charger toutes les images de référence
+    if (missionsData) {
+      // On fabrique un identifiant lisible pour chaque mission
+      const list: AdminMission[] = missionsData.map((m, index) => {
+        const anyMission = m as unknown as {
+          id?: string | number | null;
+          mission_id?: string | number | null;
+          code?: string | number | null;
+          slug?: string | number | null;
+          name?: string | number | null;
+        };
+
+        const rawId =
+          anyMission.mission_id ??
+          anyMission.code ??
+          anyMission.slug ??
+          anyMission.name ??
+          anyMission.id ??
+          index;
+
+        return { id: String(rawId) };
+      });
+
+      setMissions(list);
+    }
+
+    // 2) Images de référence
     const { data: refData, error: refError } = await supabase
       .from("mission_reference_images")
       .select("*");
 
     if (refError) {
       console.error("Erreur loadReferenceImages", refError);
-      // on n'affiche pas d'erreur bloquante, ça reste optionnel
       setRefImagesByMission({});
     } else if (refData) {
       const byMission: Record<string, MissionRefImageRow[]> = {};
@@ -165,7 +184,7 @@ const Admin = () => {
   const loadPlayersAndRoles = async () => {
     setLoadingPlayers(true);
 
-    // 1) On récupère tous les user_id qui ont déjà une submission
+    // 1) Tous les user_id qui ont déjà une submission
     const { data: submissionsData, error: submissionsError } = await supabase
       .from("submissions")
       .select("user_id")
@@ -178,7 +197,7 @@ const Admin = () => {
       setPlayers(uniqueIds.map((id) => ({ id })));
     }
 
-    // 2) On récupère les rôles admin existants
+    // 2) Rôles admin existants
     const { data: rolesData, error: rolesError } = await supabase
       .from("user_roles")
       .select("user_id, role");
@@ -252,7 +271,7 @@ const Admin = () => {
     }));
   };
 
-  // 🔹 Upload d’une image de référence pour une mission
+  // 🔹 Upload d’une image de référence pour une mission (bucket mission-references)
   const handleUploadReferenceImageForMission = async (missionId: string) => {
     const file = refUploadFiles[missionId];
     if (!file) {
@@ -267,9 +286,9 @@ const Admin = () => {
 
     const path = `reference/${missionId}/${Date.now()}_${file.name}`;
 
-    // 1) Upload dans le bucket Storage
+    // 1) Upload dans le bucket Storage pour les images de référence
     const { error: storageError } = await supabase.storage
-      .from("mission-proofs")
+      .from("mission-references")
       .upload(path, file);
 
     if (storageError) {
@@ -277,7 +296,7 @@ const Admin = () => {
       toast({
         title: "Erreur",
         description:
-          "Impossible d’uploader l’image de référence (vérifie le bucket 'mission-proofs').",
+          "Impossible d’uploader l’image de référence (vérifie le bucket 'mission-references').",
         variant: "destructive",
       });
       setRefUploadingIds((prev) => prev.filter((id) => id !== missionId));
@@ -287,7 +306,7 @@ const Admin = () => {
     // 2) Récupérer l’URL publique
     const {
       data: { publicUrl },
-    } = supabase.storage.from("mission-proofs").getPublicUrl(path);
+    } = supabase.storage.from("mission-references").getPublicUrl(path);
 
     // 3) Enregistrer dans la table mission_reference_images
     const { data: inserted, error: dbError } = await supabase
@@ -378,7 +397,7 @@ const Admin = () => {
     setUpdatingRoleIds((prev) => prev.filter((id) => id !== targetUserId));
   };
 
-  if (loading) {
+  if (loading || !user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="w-10 h-10 text-primary animate-spin" />
@@ -426,31 +445,11 @@ const Admin = () => {
                 Missions & gestion des preuves
               </h2>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                await Promise.all([
-                  loadMissionsAndReferenceImages(),
-                  loadSubmissions(),
-                ]);
-              }}
-              disabled={loadingMissions || loadingSubmissions}
-            >
-              {loadingMissions || loadingSubmissions ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Actualisation...
-                </>
-              ) : (
-                "Recharger"
-              )}
-            </Button>
           </div>
 
           {missions.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Aucune mission détectée pour le moment (aucune submission).
+              Aucune mission trouvée dans la table mission_configs.
             </p>
           ) : (
             <div className="space-y-6">
@@ -605,7 +604,7 @@ const Admin = () => {
 
                                   return (
                                     <tr
-                                      key={s.id ?? Math.random()}
+                                      key={s.id ?? `${s.user_id}-${s.created_at}`}
                                       className="border-t border-border/60"
                                     >
                                       <td className="px-2 py-1 align-top">
